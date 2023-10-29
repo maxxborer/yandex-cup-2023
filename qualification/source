@@ -1,0 +1,30 @@
+// helpers
+
+const HIDDEN_KEYS_SYMBOL = Symbol('hiddenKeys');
+
+const lightSwitch = function () {
+    if (!this[HIDDEN_KEYS_SYMBOL]) {
+        this[HIDDEN_KEYS_SYMBOL] = {};
+    }
+
+    for (let key in this) {
+        if (!key.startsWith('$')) {
+            this[HIDDEN_KEYS_SYMBOL][key] = this[key];
+            delete this[key];
+        }
+    }
+};
+
+const getter = function (key) {
+    const hiddenProps = this[HIDDEN_KEYS_SYMBOL] || {};
+
+    if (key in this) {
+        return this[key];
+    } else if (key in hiddenProps) {
+        return hiddenProps[key];
+    }
+
+    return undefined;
+};
+
+module.exports = { lightSwitch, getter }

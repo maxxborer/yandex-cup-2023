@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "rootDir": ".",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["ES2016", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Node10",
+    "noImplicitAny": true,
+    "outDir": "dist",
+    "paths": {
+      "@": ["src/*"],
+      "*.hehehe": ["*.json"]
+    },
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "strict": true,
+    "strictNullChecks": true,
+    "target": "ES2016",
+    "typeRoots": ["node_modules/@types", "types"],
+    "verbatimModuleSyntax": true
+  },
+  "exclude": ["node_modules", "config", "public", "webpack"]
+}
