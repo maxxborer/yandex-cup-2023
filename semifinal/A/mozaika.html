@@ -1,0 +1,347 @@
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <style>
+        #root {
+            position: relative;
+        }
+
+        .dialog {
+            background-color: #ccc;
+            position: absolute;
+            top: 0;
+            right: 0;
+            padding: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <input type="file">
+    <div id="root"></div>
+
+    <script>
+        // CONSTANTS
+        const ROOT = document.getElementById('root');
+        const NUMBER_OF_NEAREST = 3;
+        const SCALE = NUMBER_OF_NEAREST * NUMBER_OF_NEAREST;
+        const EXISTS = [
+            [79, 110, 76, 255],
+            [92, 110, 80, 255],
+            [81, 111, 77, 255],
+            [76, 104, 64, 255],
+            [74, 100, 56, 255],
+            [30, 100, 56, 255],
+            [20, 140, 58, 255],
+            [60, 160, 100, 255],
+            [40, 180, 120, 255],
+            [80, 110, 70, 255],
+            [60, 104, 30, 255],
+            [20, 107, 60, 255],
+        ];
+        const EXISTS_SET = new Set(EXISTS.map(item => item.join(', ')));
+
+        ///////
+        //
+        // -------------------
+        //
+        // JS LIBRARY
+
+        const createElement = (tag, className) => {
+            const el = document.createElement(tag);
+            if (className) el.classList.add(className);
+            return el;
+        };
+
+        class Store {
+            constructor(initStore) {
+                this._state = initStore;
+                this.colors = {};
+                this.dialog = null;
+                this.nearestColorCache = {};
+                this.widthColumns = 0;
+                this.heightColumns = 0;
+            }
+
+            get state() {
+                return this._state;
+            }
+
+            set state(newState) {
+                this._state = newState;
+            }
+
+            updateDimensions(width, height) {
+                this.widthColumns = Math.floor(width / SCALE);
+                this.heightColumns = Math.floor(height / SCALE);
+            }
+
+            isExistColor(color) {
+                const { exists } = this._state;
+                return EXISTS_SET.has(color.join(', '));
+            };
+
+            findNearest(color) {
+                const colorKey = color.join(',');
+                if (this.nearestColorCache[colorKey]) {
+                    return this.nearestColorCache[colorKey];
+                }
+
+                const distance = (color1, color2) =>
+                    Math.sqrt(
+                        Math.pow(color1[0] - color2[0], 2) +
+                        Math.pow(color1[1] - color2[1], 2) +
+                        Math.pow(color1[2] - color2[2], 2) +
+                        Math.pow(color1[3] - color2[3], 2)
+                    );
+
+                let nearest = [];
+
+                for (const existColor of this._state.exists) {
+                    const dist = distance(existColor, color);
+                    if (nearest.length < NUMBER_OF_NEAREST || dist < nearest[nearest.length - 1].distance) {
+                        nearest.push({ color: existColor, distance: dist });
+                        nearest.sort((a, b) => a.distance - b.distance);
+                        if (nearest.length > NUMBER_OF_NEAREST) {
+                            nearest.pop();
+                        }
+                    }
+                }
+
+                this.nearestColorCache[colorKey] = nearest.map(item => item.color);
+
+                return this.nearestColorCache[colorKey];
+            }
+
+            openDialog(key) {
+                const color = this.colors[key];
+                if (!this.dialog) {
+                    this.dialog = createElement('div', `dialog`);
+                    ROOT.appendChild(this.dialog);
+                }
+
+                const colorInfoHTML = `
+                    <div>
+                        <p>Цвет - rgba(${key})</p>
+                        <p>Есть ли в наличии? - ${color.isExist ? "да" : "нет"}</p>
+                        <p>
+                            Список самых похожих из наличия:
+                            <ul>
+                                ${color.nearest.map(item => `<li>rgba(${item.join(', ')})</li>`).join('')}
+                            </ul>
+                        </p>
+                    </div>
+                `;
+
+                if (this.dialog.innerHTML !== colorInfoHTML) {
+                    this.dialog.innerHTML = colorInfoHTML;
+                }
+            }
+        }
+
+        const store = new Store({
+            width: 0,
+            height: 0,
+            data: [],
+            exists: [],
+        });
+
+        ///////
+        //
+        // -------------------
+        //
+        // UTILS
+
+        const getAvgColor = (start, finish, width, height, data, globalWidth) => {
+            let redTotal = 0;
+            let greenTotal = 0;
+            let blueTotal = 0;
+            let alphaTotal = 0;
+            let count = 0;
+
+            const startHeight = start * height;
+            for (let y = startHeight; y < startHeight + height; y++) {
+                const finishWidth = finish * width;
+                for (let x = finishWidth; x < finishWidth + width; x++) {
+                    const pos = (y * globalWidth + x) * 4;
+                    const alpha = data[pos + 3];
+                    if (alpha > 0) {
+                        redTotal += data[pos];
+                        greenTotal += data[pos + 1];
+                        blueTotal += data[pos + 2];
+                        alphaTotal += alpha;
+                        count++;
+                    }
+                }
+            }
+            if (count === 0) return [0, 0, 0, 0];
+            const totalPixels = count;
+            return [
+                Math.round(redTotal / totalPixels),
+                Math.round(greenTotal / totalPixels),
+                Math.round(blueTotal / totalPixels),
+                Math.round(alphaTotal / totalPixels)
+            ];
+        }
+
+
+        ///////
+        //
+        // -------------------
+        //
+        // COMPONENTS
+
+        const cellComponent = (i, j) => {
+            const { exists, width, height, data } = store.state;
+
+            const wOneCol = Math.floor(width / store.widthColumns);
+            const hOneCol = Math.floor(height / store.heightColumns);
+
+            const color = getAvgColor(i, j, wOneCol, hOneCol, data, width)
+            const className = `block_${i}_${j}`;
+
+            const div = createElement('div', className);
+
+            div.style.backgroundColor = `rgba(${color.join(', ')})`;
+            div.style.width = '5px';
+            div.style.height = '5px';
+
+            return div;
+        };
+
+        const carcassComponent = () => {
+            const className = "carcass";
+            const carcass = createElement('div', className);
+
+            carcass.style.width = 'fit-content';
+            carcass.style.display = 'grid';
+            carcass.style.gridTemplateColumns = `repeat(${store.widthColumns}, 1fr)`;
+
+            const fragment = document.createDocumentFragment();
+
+            for (let i = 0; i < store.heightColumns; i++) {
+                for (let j = 0; j < store.widthColumns; j++) {
+                    const div = cellComponent(i, j);
+                    fragment.appendChild(div);
+                }
+            }
+
+            carcass.appendChild(fragment);
+
+            return carcass;
+        };
+
+        const main = (data) => {
+            const { width, height } = data;
+
+            store.state = {
+                width,
+                height,
+                data: data.data,
+                exists: EXISTS,
+            };
+
+            requestAnimationFrame(() => {
+                ROOT.innerHTML = '';
+                const carcass = carcassComponent(data);
+                carcass.addEventListener('click', (event) => {
+                    const target = event.target;
+                    if (target.className.startsWith('block_')) {
+                        const [, i, j] = target.className.split('_').map(Number);
+                        const wOneCol = Math.floor(store.state.width / store.widthColumns);
+                        const hOneCol = Math.floor(store.state.height / store.heightColumns);
+                        const color = getAvgColor(i, j, wOneCol, hOneCol, store.state.data, store.state.width);
+
+                        const isExist = store.isExistColor(color, store.state.exists);
+                        const nearest = store.findNearest(color, store.state.exists);
+                        const key = color.join(',');
+
+                        if (!store.colors[key]) {
+                            store.colors[key] = {
+                                isExist,
+                                nearest,
+                            };
+                        }
+                        store.openDialog(key);
+                    }
+                });
+                ROOT.appendChild(carcass);
+            });
+        }
+
+
+        function throttle(callback, limit) {
+            let waiting = false;
+            return function (...args) {
+                if (!waiting) {
+                    callback.apply(this, args);
+                    waiting = true;
+                    setTimeout(function () {
+                        waiting = false;
+                    }, limit);
+                }
+            };
+        }
+
+
+        ///////
+        //
+        // -------------------
+        //
+        // START POINT
+        (function () {
+            const inputFile = document.querySelector("input[type='file']");
+
+            const handleFile = throttle((e) => {
+                const [file] = e.target.files;
+
+                if (file) {
+                    if (!file.type.startsWith('image/')) {
+                        alert('Please select an image file.');
+                        return;
+                    }
+
+                    const reader = new FileReader();
+
+                    reader.addEventListener("load", e => {
+                        const img = document.createElement("img");
+                        img.addEventListener("load", e => {
+                            const cvs = document.createElement("canvas");
+                            const ctx = cvs.getContext("2d");
+
+                            store.updateDimensions(img.width, img.height);
+
+                            const ratio = Math.min(store.widthColumns / img.width, store.heightColumns / img.height);
+
+                            const width = img.width * ratio;
+                            const height = img.height * ratio;
+
+                            ctx.canvas.width = width;
+                            ctx.canvas.height = height;
+
+                            ctx.fillStyle = '#fff';
+                            ctx.fillRect(0, 0, width, height);
+
+                            ctx.drawImage(img, 0, 0, width, height);
+
+                            const data = ctx.getImageData(0, 0, width, height);
+
+                            main(data);
+                        });
+
+                        img.src = e.target.result;
+                    }, false);
+
+                    reader.readAsDataURL(file);
+                }
+            }, 1000);
+
+            addEventListener("DOMContentLoaded", (event) => {
+                inputFile.addEventListener("change", handleFile);
+            });
+        })();
+    </script>
+</body>
+
+</html>

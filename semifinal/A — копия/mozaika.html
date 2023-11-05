@@ -1,0 +1,269 @@
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <style>
+        #root {
+            position: relative;
+        }
+    </style>
+</head>
+
+<body>
+    <input type="file">
+    <div id="root"></div>
+
+    <script>
+        // CONSTANTS
+        const WIDTH_COLUMNS = 100;
+        const HEIGHT_COLUMNS = 140;
+        const NUMBER_OF_NEAREST = 3;
+        const EXISTS = [
+            [79, 110, 76, 255],
+            [92, 110, 80, 255],
+            [81, 111, 77, 255],
+            [76, 104, 64, 255],
+            [74, 100, 56, 255],
+            [30, 100, 56, 255],
+            [20, 140, 58, 255],
+            [60, 160, 100, 255],
+            [40, 180, 120, 255],
+            [80, 110, 70, 255],
+            [60, 104, 30, 255],
+            [20, 107, 60, 255],
+        ];
+
+        ///////
+        //
+        // -------------------
+        //
+        // JS LIBRARY
+
+        let store;
+        class Store {
+            _state = {};
+            subscribers = [];
+
+            constructor(initStore) {
+                this._state = initStore;
+            }
+
+            get state() {
+                return this._state;
+            }
+
+            set state(value) {
+                this._state = value;
+                this.subscribers.forEach(fn => fn(this._state));
+            }
+        }
+
+        const createStyle = (cssContent) => {
+            const style = document.createElement("style");
+            style.textContent = cssContent;
+            document.head.appendChild(style);
+        };
+        const createElement = (tag, className) => {
+            const el = document.createElement(tag);
+            el.classList.add(className);
+            return el;
+        };
+
+        ///////
+        //
+        // -------------------
+        //
+        // UTILS
+
+        const getAvgColor = (start, finish, width, height, data, globalWidth) => {
+            let redTotal = 0;
+            let greenTotal = 0;
+            let blueTotal = 0;
+            let alphaTotal = 0;
+            for (let y = start * height; y < start * height + height; y++) {
+                for (let x = finish * width; x < finish * width + width; x++) {
+                    const pos = 4 * globalWidth * y + x * 4;
+
+                    const alpha = data[pos + 3];
+                    const red = data[pos] * alpha;
+                    const green = data[pos + 1] * alpha;
+                    const blue = data[pos + 2] * alpha;
+
+                    redTotal += red;
+                    greenTotal += green;
+                    blueTotal += blue;
+                    alphaTotal += alpha;
+                }
+            }
+            return alphaTotal ? [
+                Math.round(redTotal / alphaTotal),
+                Math.round(greenTotal / alphaTotal),
+                Math.round(blueTotal / alphaTotal),
+                Math.round(alphaTotal / (width * height))
+            ] : [0, 0, 0, 0];
+        }
+
+        const isExistColor = (color, exists) => {
+            return exists.some(item => item.every((el, idx) => el === color[idx]));
+        };
+
+        const getFreeColors = (data, exists) => {
+            return exists;
+        };
+
+        const findNearest = (color, exists) => {
+            const distance = (color1, color2) =>
+                Math.sqrt(Math.pow(color1[0] - color2[0], 2) +
+                    Math.pow(color1[1] - color2[1], 2) +
+                    Math.pow(color1[2] - color2[2], 2) +
+                    Math.pow(color1[3] - color2[3], 2));
+            return exists
+                .map(item => ({ distance: distance(item, color), item }))
+                .sort((a, b) => a.distance - b.distance)
+                .map(item => item.item)
+                .slice(0, NUMBER_OF_NEAREST);
+        }
+
+        ///////
+        //
+        // -------------------
+        //
+        // COMPONENTS
+
+        const dialogComponent = (color) => {
+            const { exists, data } = store.state;
+            const className = `dialog`;
+            const div = createElement('div', className);
+
+            const isExist = isExistColor(color, exists);
+            const nearest = findNearest(color, getFreeColors(data, exists));
+
+            createStyle(`.${className} {
+                background-color: #ccc;
+                position:absolute;
+                top: 0;
+                right: 0;
+                padding: 20px;
+                display: none;
+            }`);
+
+            div.innerHTML = `
+                <div>
+                    <p>Цвет - rgba(${color.join(', ')})</p>
+                    <p>Есть ли в наличии? - ${isExist ? "да" : "нет"}</p>
+                    <p>
+                        Список самых похожих из наличия:
+                        <ul>
+                            ${nearest.map(item => `<li>rgba(${item.join(', ')})</li>`).join('')}
+                        </ul>
+                    </p>
+                </div>
+            `;
+            return div;
+        }
+
+        const cellComponent = (i, j) => {
+            const { width, height, data } = store.state;
+
+            const wOneCol = Math.floor(width / WIDTH_COLUMNS);
+            const hOneCol = Math.floor(height / HEIGHT_COLUMNS);
+
+            const color = getAvgColor(i, j, wOneCol, hOneCol, data, width)
+            const className = `block_${i}_${j}`;
+
+            createStyle(`.${className} {
+                background-color: rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]});
+                width: 5px;
+                height: 5px;
+            }`);
+
+            const div = createElement('div', className);
+            const dialog = dialogComponent(color);
+            div.appendChild(dialog);
+
+            div.addEventListener('click', () => {
+                const prev = document.getElementsByClassName('dialog');
+                for (let i = 0; i < prev.length; i++) {
+                    prev[i].style.display = '';
+                }
+                dialog.style.display = 'block';
+            });
+            return div;
+        };
+
+        const carcassComponent = () => {
+            const className = "carcass";
+            const carcass = createElement('div', className);
+
+            createStyle(`.${className} {
+                width: fit-content;
+                display: grid;
+                grid-template-columns: repeat(${WIDTH_COLUMNS}, 1fr);
+            }`);
+
+            for (let i = 0; i < HEIGHT_COLUMNS; i++) {
+                for (let j = 0; j < WIDTH_COLUMNS; j++) {
+                    const div = cellComponent(i, j);
+                    carcass.appendChild(div);
+                }
+            }
+            return carcass;
+        }
+
+        const main = (data) => {
+            const { width, height } = data;
+
+            store = new Store({
+                width,
+                height,
+                data: data.data,
+                exists: EXISTS,
+            });
+
+            const root = document.getElementById('root');
+            const carcass = carcassComponent(data);
+            root.appendChild(carcass);
+        }
+
+        ///////
+        //
+        // -------------------
+        //
+        // START POINT
+        (function () {
+            const handleFile = (e, afterLoadFn) => {
+                const [file] = e.target.files;
+
+                if (file) {
+                    const reader = new FileReader();
+
+                    reader.addEventListener("load", e => {
+                        const img = document.createElement("img");
+                        img.addEventListener("load", e => {
+                            const cvs = document.createElement("canvas");
+                            const ctx = cvs.getContext("2d");
+                            ctx.canvas.width = img.width;
+                            ctx.canvas.height = img.height;
+
+                            ctx.fillStyle = '#fff';
+                            ctx.fillRect(0, 0, img.width, img.height);
+
+                            ctx.drawImage(img, 0, 0);
+                            const data = ctx.getImageData(0, 0, img.width, img.height);
+
+                            afterLoadFn(data);
+                        });
+
+                        img.src = e.target.result;
+                    }, false);
+
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            document.querySelector("input").addEventListener("change", (e) => handleFile(e, main));
+        })();
+    </script>
+</body>
+
+</html>
